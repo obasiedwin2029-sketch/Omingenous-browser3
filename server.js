@@ -269,8 +269,15 @@ async function perform(s, req) {
   try {
     title = await page.title();
   } catch (e) {}
+  let typing = false;
+  try {
+    typing = await page.evaluate(() => {
+      const a = document.activeElement;
+      return !!a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA" || a.isContentEditable === true);
+    });
+  } catch (e) {}
   const size = s.size || SIZES.phone;
-  return { url: page.url(), title: title, shot: shot, width: size[0], height: size[1], cursor: cursor, note: note, elements: info.elements, text: info.text };
+  return { typing: typing, url: page.url(), title: title, shot: shot, width: size[0], height: size[1], cursor: cursor, note: note, elements: info.elements, text: info.text };
 }
 
 app.get("/", (req, res) => res.json({ ok: true }));
