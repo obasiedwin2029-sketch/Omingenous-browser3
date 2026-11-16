@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: omingenous-browser
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: TOKEN
+        sync: false
