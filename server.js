@@ -66,6 +66,10 @@ async function getBrowser() {
         "--disable-dev-shm-usage",
         "--disable-gpu",
         "--no-zygote",
+        "--disable-features=site-per-process,IsolateOrigins,TranslateUI",
+        "--disable-site-isolation-trials",
+        "--disable-breakpad",
+        "--disable-component-update",
         "--renderer-process-limit=1",
         "--disable-extensions",
         "--disable-background-networking",
@@ -138,6 +142,15 @@ async function settle(page) {
   try {
     await page.waitForNetworkIdle({ idleTime: 500, timeout: 4000 });
   } catch (e) {}
+  // JavaScript apps draw themselves a moment after loading: wait until there is something on the page.
+  for (let i = 0; i < 8; i++) {
+    let len = 0;
+    try {
+      len = await page.evaluate(() => (document.body ? document.body.innerText.length : 0));
+    } catch (e) {}
+    if (len >= 40) break;
+    await new Promise((r) => setTimeout(r, 700));
+  }
   await new Promise((r) => setTimeout(r, 400));
 }
 
