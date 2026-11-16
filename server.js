@@ -136,14 +136,34 @@ async function getSession(sid, device) {
     await page.setRequestInterception(true);
     page.on("request", (r) => {
       const t = r.resourceType();
+      // Second lock: the page itself may only be CodeHealing. Links, redirects and typed addresses elsewhere are refused.
+      if (r.isNavigationRequest() && r.frame() === page.mainFrame() && !allowedUrl(r.url())) {
+        r.abort("blockedbyclient").catch(() => undefined);
+        return;
+      }
       if (t === "media" || t === "font") r.abort().catch(() => undefined);
       else r.continue().catch(() => undefined);
+    });
+    page.on("popup", (p) => {
+      p.close().catch(() => undefined);
     });
     s = { page: page, device: device, last: now, busy: Promise.resolve() };
     sessions.set(sid, s);
   }
   s.last = now;
   return s;
+}
+
+function allowedUrl(raw) {
+  try {
+    const u = new URL(raw);
+    if (u.protocol === "about:" || u.protocol === "data:" || u.protocol === "blob:") return true;
+    if (u.protocol !== "https:") return false;
+    const h = u.hostname.toLowerCase().replace(/\.$/, "");
+    return h === "codehealing.dev" || h.endsWith(".codehealing.dev");
+  } catch (e) {
+    return false;
+  }
 }
 
 async function settle(page) {
