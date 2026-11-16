@@ -120,11 +120,19 @@ async function getSession(sid, device) {
     s.device = device;
   }
   if (!s) {
+    // A new visitor gets a fresh Chrome, so memory from earlier pages never builds up.
+    if (browser) {
+      try {
+        await browser.close();
+      } catch (e) {}
+      browser = null;
+    }
     const b = await getBrowser();
     const page = await b.newPage();
     const size = SIZES[device] || SIZES.phone;
     await page.setViewport({ width: size[0], height: size[1], isMobile: device === "phone", hasTouch: device !== "desktop" });
     await page.setExtraHTTPHeaders({ "Accept-Language": "en-US,en;q=0.9" });
+    await page.setCacheEnabled(false);
     await page.setRequestInterception(true);
     page.on("request", (r) => {
       const t = r.resourceType();
