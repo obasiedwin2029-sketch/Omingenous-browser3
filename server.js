@@ -6,6 +6,14 @@ const PORT = Number(process.env.PORT || 7860);
 const CHROME = process.env.PUPPETEER_EXECUTABLE_PATH || "/usr/bin/google-chrome-stable";
 const SIZES = { phone: [390, 760], tablet: [768, 900], desktop: [1280, 800] };
 
+// The page is drawn at the width of the device but as tall as the visitor's screen area, so it fills that area edge to edge.
+function sizeFor(device, ratio) {
+  const base = SIZES[device] || SIZES.phone;
+  const r = Number(ratio);
+  if (!r || r < 0.4 || r > 3) return base;
+  return [base[0], Math.max(400, Math.min(1800, Math.round(base[0] * r)))];
+}
+
 const app = express();
 app.use(express.json({ limit: "1mb" }));
 
@@ -110,14 +118,15 @@ setInterval(async () => {
   }
 }, 60000);
 
-async function getSession(sid, device) {
+async function getSession(sid, device, ratio) {
   const now = Date.now();
   await dropAll(sid);
   let s = sessions.get(sid);
-  if (s && s.device !== device) {
-    const size = SIZES[device] || SIZES.phone;
-    await s.page.setViewport({ width: size[0], height: size[1], isMobile: device === "phone", hasTouch: device !== "desktop" });
+  const want = sizeFor(device, ratio);
+  if (s && (s.device !== device || s.size[1] !== want[1])) {
+    await s.page.setViewport({ width: want[0], height: want[1], isMobile: device === "phone", hasTouch: device !== "desktop" });
     s.device = device;
+    s.size = want;
   }
   if (!s) {
     // A new visitor gets a fresh Chrome, so memory from earlier pages never builds up.
@@ -129,7 +138,7 @@ async function getSession(sid, device) {
     }
     const b = await getBrowser();
     const page = await b.newPage();
-    const size = SIZES[device] || SIZES.phone;
+    const size = want;
     await page.setViewport({ width: size[0], height: size[1], isMobile: device === "phone", hasTouch: device !== "desktop" });
     await page.setExtraHTTPHeaders({ "Accept-Language": "en-US,en;q=0.9" });
     await page.setCacheEnabled(false);
@@ -147,7 +156,7 @@ async function getSession(sid, device) {
     page.on("popup", (p) => {
       p.close().catch(() => undefined);
     });
-    s = { page: page, device: device, last: now, busy: Promise.resolve() };
+    s = { page: page, device: device, size: want, last: now, busy: Promise.resolve() };
     sessions.set(sid, s);
   }
   s.last = now;
@@ -260,7 +269,7 @@ async function perform(s, req) {
   try {
     title = await page.title();
   } catch (e) {}
-  const size = SIZES[req.device] || SIZES.phone;
+  const size = s.size || SIZES.phone;
   return { url: page.url(), title: title, shot: shot, width: size[0], height: size[1], cursor: cursor, note: note, elements: info.elements, text: info.text };
 }
 
@@ -271,7 +280,7 @@ app.post("/do", async (req, res) => {
   const body = req.body || {};
   if (!body.sid) return res.status(400).json({ detail: "sid required" });
   try {
-    const s = await getSession(String(body.sid), body.device || "phone");
+    const s = await getSession(String(body.sid), body.device || "phone", body.ratio);
     const run = s.busy.then(() => perform(s, body));
     s.busy = run.catch(() => undefined);
     res.json(await run);
